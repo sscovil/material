@@ -22,6 +22,10 @@ md-toolbar {
     transition: box-shadow $swift-ease-in-out-duration linear;
   }
 
+  md-toolbar-filler {
+    width: 9 * $baseline-grid;
+  }
+
   *,
   *:before,
   *:after {

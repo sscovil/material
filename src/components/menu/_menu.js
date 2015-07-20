@@ -135,7 +135,7 @@ angular.module('material.components.menu', [
  *
  */
 
-function MenuDirective($mdMenu) {
+function MenuDirective($mdMenu, $mdUtil, $timeout) {
   var INVALID_PREFIX = 'Invalid HTML for md-menu: ';
   return {
     restrict: 'E',
@@ -157,6 +157,18 @@ function MenuDirective($mdMenu) {
 
     // Default element for ARIA attributes has the ngClick or ngMouseenter expression
     triggerElement && triggerElement.setAttribute('aria-haspopup', 'true');
+
+    var nestedMenus = templateElement[0].querySelectorAll('md-menu');
+    var nestingDepth = parseInt(templateElement[0].getAttribute('md-nest-level'), 10) || 0;
+    if (nestedMenus) {
+      angular.forEach($mdUtil.nodesToArray(nestedMenus), function(menuEl) {
+        if (!menuEl.hasAttribute('md-position-mode')) {
+          menuEl.setAttribute('md-position-mode', 'cascade');
+        }
+        menuEl.classList.add('md-nested-menu');
+        menuEl.setAttribute('md-nest-level', nestingDepth + 1);
+      });
+    }
     return link;
   }
 
@@ -177,58 +189,133 @@ function MenuDirective($mdMenu) {
   }
 }
 
-function MenuController($mdMenu, $attrs, $element, $scope) {
+function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
+
   var menuContainer;
-  var ctrl = this;
+  var self = this;
+  this.containerProxies = [];
   var triggerElement;
 
-  this.init = angular.bind(this, init);
-  this.open = angular.bind(this, openMenu);
-  this.close = angular.bind(this, closeMenu);
 
-  this.positionMode = angular.bind(this, positionMode);
-  this.offsets = angular.bind(this, offsets);
-
-  // Expose a open function to the child scope for html to use
-  $scope.$mdOpenMenu = this.open;
 
   /**
    * Called by our linking fn to provide access to the menu-content
    * element removed during link
    */
-  function init(setMenuContainer) {
+  this.init = function init(setMenuContainer) {
     menuContainer = setMenuContainer;
     // Default element for ARIA attributes has the ngClick or ngMouseenter expression
     triggerElement = $element[0].querySelector('[ng-click],[ng-mouseenter]');
-  }
+
+    this.nestedMenus = $mdUtil.nodesToArray(menuContainer[0].querySelectorAll('.md-nested-menu'));
+    if (this.nestedMenus.length) {
+      this.enableNesting();
+    }
+
+    menuContainer.on('$mdInterimElementRemove', function() {
+      self.isOpen = false;
+    });
+  };
+
+  this.enableNesting = function() {
+    $scope.$on('$mdMenuOpen', function(event, el) {
+      if (menuContainer[0].contains(el[0])) {
+        self.currentlyOpenMenu = el.controller('mdMenu');
+        self.isAlreadyOpening = false;
+        //self.currentlyOpenMenu.registerContainerProxy(self.handleKeyDown.bind(self));
+      }
+    });
+    $scope.$on('$mdMenuClose', function(event, el) {
+      if (menuContainer[0].contains(el[0])) {
+        self.currentlyOpenMenu = undefined;
+      }
+    });
+
+    var menuItems = angular.element($mdUtil.nodesToArray(menuContainer[0].querySelectorAll('md-menu-item')));
+    var openMenuTimeout;
+    menuItems.on('mouseenter', function(event) {
+      if (self.isAlreadyOpening) return;
+      var nestedMenu = (
+        event.target.querySelector('md-menu') 
+          || $mdUtil.getClosest(event.target, 'MD-MENU')
+      );
+      openMenuTimeout = $timeout(function() {
+        if (nestedMenu) {
+          nestedMenu = angular.element(nestedMenu).controller('mdMenu');
+        }
+
+        if (self.currentlyOpenMenu && self.currentlyOpenMenu != nestedMenu) {
+          var closeTo = (parseInt($attrs.mdNestLevel, 10) || 0) + 1;
+          self.currentlyOpenMenu.close(true, { closeTo: closeTo });
+        } else if (nestedMenu && nestedMenu.open) {
+          self.isAlreadyOpening = true;
+          nestedMenu.open();
+        }
+      }, nestedMenu ? 100 : 250);
+    });
+    menuItems.on('mouseleave', function(event) {
+      if (openMenuTimeout) {
+        $timeout.cancel(openMenuTimeout);
+        openMenuTimeout = undefined;
+      }
+    });
+  };
 
   /**
    * Uses the $mdMenu interim element service to open the menu contents
    */
-  function openMenu(ev) {
+  this.open = function openMenu(ev) {
     ev && ev.stopPropagation();
-
+    if (self.isOpen) return;
+    self.isOpen = true;
     triggerElement = triggerElement || (ev ? ev.target : $element[0]);
     triggerElement.setAttribute('aria-expanded', 'true');
-
-    ctrl.isOpen = true;
+    $scope.$emit('$mdMenuOpen', $element);
+    $element[0].classList.add('md-open');
+    angular.forEach(this.nestedMenus, function(el) {
+      el.classList.remove('md-open');
+    });
     $mdMenu.show({
       scope: $scope,
-      mdMenuCtrl: ctrl,
+      mdMenuCtrl: self,
       element: menuContainer,
       target: triggerElement
     });
   }
 
-  /**
-   * Use the $mdMenu interim element service to close the menu contents
-   */
-  function closeMenu(skipFocus) {
-    if ( !ctrl.isOpen ) return;
+  // Expose a open function to the child scope for html to use
+  $scope.$mdOpenMenu = this.open;
 
-    ctrl.isOpen = false;
+  $scope.$watch(function() { return self.isOpen; }, function() {
+    $scope.$mdMenuIsOpen = self.isOpen;
+  });
+
+  this.focusMenuContainer = function focusMenuContainer() {
+    var focusTarget = menuContainer[0].querySelector('[md-menu-focus-target]');
+    if (!focusTarget) focusTarget = menuContainer[0].querySelector('.md-button');
+    focusTarget.focus();
+  };
+
+  this.registerContainerProxy = function registerContainerProxy(handler) {
+    this.containerProxies.push(handler);
+  };
+
+  this.triggerContainerProxy = function triggerContainerProxy(ev) {
+    angular.forEach(this.containerProxies, function(proxy) {
+      proxy(ev);
+    });
+  };
+
+  // Use the $mdMenu interim element service to close the menu contents
+  this.close = function closeMenu(skipFocus, closeOpts) {
+    if ( !self.isOpen ) return;
+
+    self.isOpen = false;
     triggerElement && triggerElement.setAttribute('aria-expanded', 'false');
-    $mdMenu.hide();
+    $element[0].classList.remove('md-open');
+    $mdMenu.hide(null, closeOpts);
+
+    $scope.$emit('$mdMenuClose', $element);
 
     if (!skipFocus) {
       $element.children()[0].focus();
@@ -239,7 +326,7 @@ function MenuController($mdMenu, $attrs, $element, $scope) {
    * Build a nice object out of our string attribute which specifies the
    * target mode for left and top positioning
    */
-  function positionMode() {
+  this.positionMode = function positionMode() {
     var attachment = ($attrs.mdPositionMode || 'target').split(' ');
 
     // If attachment is a single item, duplicate it for our second value.
@@ -258,7 +345,7 @@ function MenuController($mdMenu, $attrs, $element, $scope) {
    * Build a nice object out of our string attribute which specifies
    * the offset of top and left in pixels.
    */
-  function offsets() {
+  this.offsets = function offsets() {
     var offsets = ($attrs.mdOffset || '0 0').split(' ').map(parseFloat);
     if (offsets.length == 2) {
       return {

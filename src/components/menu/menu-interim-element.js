@@ -21,7 +21,7 @@ function MenuProvider($$interimElementProvider) {
     });
 
   /* @ngInject */
-  function menuDefaultOptions($mdUtil, $mdTheming, $mdConstant, $document, $window, $q, $$rAF, $animateCss, $animate) {
+  function menuDefaultOptions($mdUtil, $mdTheming, $mdConstant, $document, $window, $q, $$rAF, $animateCss, $animate, $timeout) {
     var animator = $mdUtil.dom.animator;
 
     return {
@@ -32,6 +32,7 @@ function MenuProvider($$interimElementProvider) {
       disableParentScroll: true,
       skipCompile: true,
       preserveScope: true,
+      skipHide: true,
       themable: true
     };
 
@@ -62,12 +63,13 @@ function MenuProvider($$interimElementProvider) {
       return function hideBackdrop() {
         if (options.backdrop) {
           // Override duration to immediately remove invisible backdrop
+          options.backdrop.off('click');
           $animate.leave(options.backdrop, {duration:0});
         }
         if (options.disableParentScroll) {
           options.restoreScroll();
         }
-      }
+      };
     }
 
     /**
@@ -216,14 +218,18 @@ function MenuProvider($$interimElementProvider) {
           scope.$apply(function() {
             var keyCodes = $mdConstant.KEY_CODE;
             switch (ev.keyCode) {
-              case keyCodes.ESCAPE:
+              case $mdConstant.KEY_CODE.ESCAPE:
                 opts.mdMenuCtrl.close();
                 break;
-              case keyCodes.UP_ARROW:
-                focusMenuItem(ev, opts.menuContentEl, opts, -1);
+              case $mdConstant.KEY_CODE.UP_ARROW:
+                if (!focusMenuItem(ev, opts.menuContentEl, opts, -1)) {
+                  opts.mdMenuCtrl.triggerContainerProxy(ev);
+                }
                 break;
-              case keyCodes.DOWN_ARROW:
-                focusMenuItem(ev, opts.menuContentEl, opts, 1);
+              case $mdConstant.KEY_CODE.DOWN_ARROW:
+                if (!focusMenuItem(ev, opts.menuContentEl, opts, 1)) {
+                  opts.mdMenuCtrl.triggerContainerProxy(ev);
+                }
                 break;
             }
           });
@@ -233,7 +239,7 @@ function MenuProvider($$interimElementProvider) {
           e.preventDefault();
           e.stopPropagation();
           scope.$apply(function() {
-            opts.mdMenuCtrl.close(true);
+            opts.mdMenuCtrl.close(true, { closeAll: true });
           });
         }
 
@@ -245,7 +251,7 @@ function MenuProvider($$interimElementProvider) {
           do {
             if (target == opts.menuContentEl[0]) return;
             if (hasAnyAttribute(target, ['ng-click', 'ng-href', 'ui-sref'])) {
-              if (!target.hasAttribute('disabled')) {
+              if (!target.hasAttribute('disabled') && !$mdUtil.getClosest(target, 'MD-MENU')) {
                 close();
               }
               break;
@@ -254,7 +260,7 @@ function MenuProvider($$interimElementProvider) {
 
           function close() {
             scope.$apply(function() {
-              opts.mdMenuCtrl.close();
+              opts.mdMenuCtrl.close(true, { closeAll: true });
             });
           }
 
@@ -272,6 +278,13 @@ function MenuProvider($$interimElementProvider) {
           }
         }
 
+        opts.menuContentEl[0].addEventListener('click', captureClickListener, true);
+
+        return function cleanupInteraction() {
+          element.removeClass('md-clickable');
+          opts.menuContentEl.off('keydown');
+          opts.menuContentEl[0].removeEventListener('click', captureClickListener, true);
+        };
       }
     }
 
@@ -291,13 +304,15 @@ function MenuProvider($$interimElementProvider) {
 
       // Traverse through our elements in the specified direction (+/-1) and try to
       // focus them until we find one that accepts focus
+      var didFocus;
       for (var i = currentIndex + direction; i >= 0 && i < items.length; i = i + direction) {
-        var focusTarget = items[i].firstElementChild || items[i];
-        var didFocus = attemptFocus(focusTarget);
+        var focusTarget = items[i].querySelector('.md-button');
+        didFocus = attemptFocus(focusTarget);
         if (didFocus) {
           break;
         }
       }
+      return didFocus;
     }
 
     /**
@@ -334,6 +349,8 @@ function MenuProvider($$interimElementProvider) {
         openMenuNodeRect = openMenuNode.getBoundingClientRect(),
         boundryNode = opts.parent[0],
         boundryNodeRect = boundryNode.getBoundingClientRect();
+
+      var menuStyle = $window.getComputedStyle(openMenuNode);
 
       var originNode = opts.target[0].querySelector('[md-menu-origin]') || opts.target[0],
         originNodeRect = originNode.getBoundingClientRect();
@@ -372,10 +389,9 @@ function MenuProvider($$interimElementProvider) {
         case 'target':
           position.top = existingOffsets.top + originNodeRect.top - alignTargetRect.top;
           break;
-        // Future support for mdMenuBar
-        // case 'top':
-        //   position.top = originNodeRect.top;
-        //   break;
+        case 'cascade':
+          position.top = originNodeRect.top - parseFloat(menuStyle.paddingTop);
+          break;
         case 'bottom':
           position.top = originNodeRect.top + originNodeRect.height;
           break;
@@ -392,15 +408,15 @@ function MenuProvider($$interimElementProvider) {
           position.left = originNodeRect.right - openMenuNodeRect.width + (openMenuNodeRect.right - alignTargetRect.right);
           transformOrigin += 'right';
           break;
-        // Future support for mdMenuBar
+        case 'cascade':
+          var willFitRight = (originNodeRect.right + openMenuNodeRect.width) < bounds.right;
+          position.left = willFitRight ? originNodeRect.right : originNodeRect.left - openMenuNodeRect.width;
+          transformOrigin += willFitRight ? 'left' : 'right';
+          break;
         case 'left':
           position.left = originNodeRect.left;
           transformOrigin += 'left';
           break;
-        // case 'right':
-        //   position.left = originNodeRect.right - containerNode.offsetWidth;
-        //   transformOrigin += 'right';
-        //   break;
         default:
           throw new Error('Invalid target mode "' + positionMode.left + '" specified for md-menu on X axis.');
       }
@@ -417,10 +433,8 @@ function MenuProvider($$interimElementProvider) {
       return {
         top: Math.round(position.top),
         left: Math.round(position.left),
-
         // Animate a scale out if we aren't just repositioning
         transform: !opts.alreadyOpen ? $mdUtil.supplant('scale({0},{1})', [scaleX, scaleY]) : undefined,
-
         transformOrigin: transformOrigin
       };
 

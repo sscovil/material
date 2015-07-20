@@ -27,7 +27,12 @@ describe('md-menu directive', function() {
     expect(menu.firstElementChild.nodeName).toBe('BUTTON');
   });
 
-  it('opens on click', function() {
+  it('specifies button type', inject(function($compile, $rootScope) {
+    var menu = setup()[0];
+    expect(menu.firstElementChild.getAttribute('type')).toBe('button');
+  }));
+
+  it('opens on click', function () {
     var menu = setup();
     openMenu(menu);
     expect(getOpenMenuContainer().length).toBe(1);

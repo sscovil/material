@@ -272,7 +272,7 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
     triggerElement.setAttribute('aria-expanded', 'true');
     $scope.$emit('$mdMenuOpen', $element);
     $element[0].classList.add('md-open');
-    angular.forEach(this.nestedMenus, function(el) {
+    angular.forEach(self.nestedMenus, function(el) {
       el.classList.remove('md-open');
     });
     $mdMenu.show({

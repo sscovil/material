@@ -222,7 +222,7 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
       if (menuContainer[0].contains(el[0])) {
         self.currentlyOpenMenu = el.controller('mdMenu');
         self.isAlreadyOpening = false;
-        //self.currentlyOpenMenu.registerContainerProxy(self.handleKeyDown.bind(self));
+        self.currentlyOpenMenu.registerContainerProxy(self.handleKeyDown.bind(self));
       }
     });
     $scope.$on('$mdMenuClose', function(event, el) {
@@ -231,12 +231,17 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
       }
     });
 
+    // Handle keydowns proxied from nested menus
+    this.handleKeyDown = function(ev) {
+      console.log("Got proxy key");
+    };
+
     var menuItems = angular.element($mdUtil.nodesToArray(menuContainer[0].querySelectorAll('md-menu-item')));
     var openMenuTimeout;
     menuItems.on('mouseenter', function(event) {
       if (self.isAlreadyOpening) return;
       var nestedMenu = (
-        event.target.querySelector('md-menu') 
+        event.target.querySelector('md-menu')
           || $mdUtil.getClosest(event.target, 'MD-MENU')
       );
       openMenuTimeout = $timeout(function() {
@@ -301,7 +306,7 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
   };
 
   this.triggerContainerProxy = function triggerContainerProxy(ev) {
-    angular.forEach(this.containerProxies, function(proxy) {
+    angular.forEach(self.containerProxies, function(proxy) {
       proxy(ev);
     });
   };

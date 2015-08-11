@@ -233,7 +233,6 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
 
     // Handle keydowns proxied from nested menus
     this.handleKeyDown = function(ev) {
-      console.log("Got proxy key");
     };
 
     var menuItems = angular.element($mdUtil.nodesToArray(menuContainer[0].querySelectorAll('md-menu-item')));
@@ -252,7 +251,7 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
         if (self.currentlyOpenMenu && self.currentlyOpenMenu != nestedMenu) {
           var closeTo = (parseInt($attrs.mdNestLevel, 10) || 0) + 1;
           self.currentlyOpenMenu.close(true, { closeTo: closeTo });
-        } else if (nestedMenu && nestedMenu.open) {
+        } else if (nestedMenu && !nestedMenu.isOpen && nestedMenu.open) {
           self.isAlreadyOpening = true;
           nestedMenu.open();
         }

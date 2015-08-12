@@ -256,6 +256,8 @@ function MenuController($mdMenu, $attrs, $element, $scope, $mdUtil, $timeout) {
           nestedMenu.open();
         }
       }, nestedMenu ? 100 : 250);
+      var focusableTarget = event.currentTarget.querySelector('[tabindex]');
+      focusableTarget && focusableTarget.focus();
     });
     menuItems.on('mouseleave', function(event) {
       if (openMenuTimeout) {

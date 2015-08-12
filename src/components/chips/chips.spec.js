@@ -1,14 +1,20 @@
 describe('<md-chips>', function() {
-  var scope;
+  var scope, $exceptionHandler, $timeout;
   var BASIC_CHIP_TEMPLATE =
       '<md-chips ng-model="items"></md-chips>';
   var CHIP_APPEND_TEMPLATE =
       '<md-chips ng-model="items" md-on-append="appendChip($chip)"></md-chips>';
+  var CHIP_READONLY_AUTOCOMPLETE_TEMPLATE =
+    '<md-chips ng-model="items" readonly="true">' +
+    '  <md-autocomplete md-items="item in [\'hi\', \'ho\', \'he\']"></md-autocomplete>' +
+    '</md-chips>';
 
   beforeEach(module('material.components.chips', 'material.components.autocomplete'));
-  beforeEach(inject(function ($rootScope) {
+  beforeEach(inject(function ($rootScope, _$exceptionHandler_, _$timeout_) {
     scope = $rootScope.$new();
     scope.items = ['Apple', 'Banana', 'Orange'];
+    $exceptionHandler = _$exceptionHandler_;
+    $timeout = _$timeout_;
   }));
 
   describe('basic functionality', function () {
@@ -86,6 +92,14 @@ describe('<md-chips>', function() {
       expect(chips.length).toBe(2);
       expect(chips[0].innerHTML).toContain('Apple');
       expect(chips[1].innerHTML).toContain('Orange');
+    });
+
+    it('should not throw an error when using readonly with an autocomplete', function() {
+      var element = buildChips(CHIP_READONLY_AUTOCOMPLETE_TEMPLATE);
+
+      $timeout.flush();
+
+      expect($exceptionHandler.errors).toEqual([]);
     });
 
     it('should call the append method when adding a chip', function() {
